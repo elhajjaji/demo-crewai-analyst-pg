@@ -1,0 +1,17 @@
+# pg_analyst — dépendances Python
+# Install : pip install -r requirements.txt
+
+# CrewAI framework
+crewai>=0.80.0
+
+# LLM backend Ollama
+langchain-ollama>=0.2.0
+
+# HTTP client pour mcpo
+requests>=2.31.0
+
+# Config YAML
+pyyaml>=6.0
+
+# Optionnel : affichage console amélioré
+rich>=13.0.0

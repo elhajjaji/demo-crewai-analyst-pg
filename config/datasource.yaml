@@ -1,0 +1,63 @@
+# ============================================================
+# SEUL FICHIER À MODIFIER POUR CHANGER DE SOURCE DE DONNÉES
+# ============================================================
+
+name: "Benefits Dataset - Hospice Général"
+
+connection:
+  # URL du serveur mcpo exposant PostgreSQL
+  mcpo_url: "http://localhost:8000"
+  # Nom du serveur déclaré dans mcpo-config.yaml
+  mcpo_server: "postgres-benefits"
+  schema: "src"
+
+ollama:
+  model: "qwen2.5:14b"
+  base_url: "http://localhost:11434"   # ← laisser sans /v1, CrewAI LLM le gère
+
+analysis:
+  # Grandes lignes fournies par l'utilisateur
+  # L'orchestrateur affine et développe les axes par lui-même
+  user_guidelines: |
+analysis:
+  user_guidelines: |
+    Je veux comprendre cette base de gestion des bénéficiaires sociaux :
+
+    AXE 1 — Démographie des bénéficiaires
+    - Répartition par sexe, tranche d'âge, statut (vivant/décédé)
+    - Âge moyen et distribution des âges à l'entrée dans le système
+    - Évolution du nombre de bénéficiaires actifs par année
+
+    AXE 2 — Analyse des dossiers
+    - Durée moyenne des dossiers, taux de dossiers ouverts
+    - Nombre de dossiers par individu, récurrence
+
+    AXE 3 — Prestations : dispersion et profils
+    - Fréquence et montant par type de prestation
+    - Dispersion par sexe, type de permis, année
+    - Prestations uniques vs récurrentes par individu
+
+    AXE 4 — Évolution temporelle
+    - Évolution du nombre de bénéficiaires par année
+    - Évolution des montants par type de permis et par année
+    - Saisonnalité mensuelle des prestations
+    - Délai dossier → première prestation
+
+    AXE 5 — Permis et statut administratif
+    - Types de permis les plus fréquents
+    - Corrélation type de permis × montant de prestation
+    - Permis expirés avec prestations encore actives
+
+    AXE 6 — Segmentation des bénéficiaires
+    - Top 10% des bénéficiaires par montant total reçu : quel profil ?
+    - Segmentation par intensité d'utilisation
+
+    AXE 7 — Qualité des données et anomalies
+    - Individus décédés avec prestations postérieures
+    - Montants aberrants, dossiers incohérents, doublons NAVS
+
+  # Nombre de tours d'enrichissement (l'analyste demande des requêtes supplémentaires)
+  max_enrichment_turns: 3
+
+output:
+  dir: "output/"
