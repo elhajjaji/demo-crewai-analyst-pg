@@ -1,4 +1,4 @@
-# pg_analyst 🐝
+# demo-crewai-analyst-pg 🐝
 
 **Analyse agentique de bases PostgreSQL → Dashboard HTML interactif**
 
@@ -34,30 +34,15 @@ Utilisateur (grandes lignes)
 
 ## Prérequis
 
-1. **PostgreSQL** démarré (benefits-dataset ou autre source)
-2. **mcpo** installé et configuré
-3. **Ollama** avec le modèle requis
-4. **Python 3.11+**
-
-## Installation
-
-### Créer et activer le venv
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-> Pour désactiver : `deactivate`
-
-### Installer les dépendances
-
-```bash
-pip install -r requirements.txt
-pip install mcpo --break-system-packages
-```
+1. **Base de données PostgreSQL** — voir [Déploiement benefits-dataset](#déploiement-de-la-base-de-données-benefits-dataset) ci-dessous
+2. **Docker Engine + Compose** — pour déployer la base
+3. **mcpo** installé et configuré
+4. **Ollama** avec le modèle requis
+5. **Python 3.11+**
 
 ## Déploiement de la base de données (benefits-dataset)
+
+> **Prérequis** : Docker Engine + Compose
 
 Source : [github.com/elhajjaji/benefits-dataset](https://github.com/elhajjaji/benefits-dataset)
 
@@ -65,7 +50,8 @@ Source : [github.com/elhajjaji/benefits-dataset](https://github.com/elhajjaji/be
 
 ```bash
 cd ..
-git clone https://github.com/elhajjaji/benefits-dataset.git
+# Cloner seulement si le dossier n'existe pas encore
+[ ! -d "benefits-dataset" ] && git clone https://github.com/elhajjaji/benefits-dataset.git
 cd benefits-dataset
 ```
 
@@ -102,6 +88,24 @@ docker compose down
 ```
 
 ---
+
+## Installation
+
+### Créer et activer le venv
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+> Pour désactiver : `deactivate`
+
+### Installer les dépendances
+
+```bash
+pip install -r requirements.txt
+pip install mcpo --break-system-packages
+```
 
 ## Démarrage
 
