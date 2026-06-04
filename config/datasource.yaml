@@ -15,10 +15,58 @@ ollama:
   model: "qwen2.5:14b"
   base_url: "http://localhost:11434"   # ← laisser sans /v1, CrewAI LLM le gère
 
-analysis:
-  # Grandes lignes fournies par l'utilisateur
-  # L'orchestrateur affine et développe les axes par lui-même
-  user_guidelines: |
+# ── Configuration des LLM ────────────────────────────────────────────────────
+# Déclarez ici tous vos LLM disponibles (locaux et commerciaux).
+# Chaque LLM a un identifiant unique (id) utilisé pour l'assigner aux agents.
+llms:
+  default: "ollama_qwen14b"          # LLM utilisé si l'agent n'en spécifie pas
+
+  models:
+    - id: "ollama_qwen14b"
+      provider: "ollama"
+      model: "qwen2.5:14b"
+      base_url: "http://localhost:11434"
+
+    - id: "ollama_qwen_coder14b"
+      provider: "ollama"
+      model: "qwen2.5-coder:14b"
+      base_url: "http://localhost:11434"
+
+    - id: "ollama_mistral"
+      provider: "ollama"
+      model: "mistral:7b"
+      base_url: "http://localhost:11434"
+
+    - id: "ollama_codellama13b"
+      provider: "ollama"
+      model: "codellama:13b"
+      base_url: "http://localhost:11434"
+
+    - id: "ollama_deepseek_coder16b"
+      provider: "ollama"
+      model: "deepseek-coder-v2:16b"
+      base_url: "http://localhost:11434"
+
+    - id: "ollama_qwen3_14b"
+      provider: "ollama"
+      model: "qwen3:14b"
+      base_url: "http://localhost:11434"
+
+    # Exemple LLM commercial (décommenter et renseigner api_key)
+    # - id: "openai_gpt4o"
+    #   provider: "openai"
+    #   model: "gpt-4o"
+    #   base_url: "https://api.openai.com/v1"
+    #   api_key: "sk-..."
+
+# ── Attribution des LLM par agent ────────────────────────────────────────────
+# Valeurs possibles : un id de llms.models, ou null (→ utilise llms.default)
+  agents:
+    orchestrator: "ollama_qwen14b"       # raisonnement complexe, délégation
+    analyst: "ollama_qwen14b"            # interprétation métier, itération analytique
+    sql_requester: "ollama_qwen3_14b"   # bon suivi d'instructions, support tools
+    dashboard_generator: "ollama_deepseek_coder16b"   # génération HTML/JS
+
 analysis:
   user_guidelines: |
     Je veux comprendre cette base de gestion des bénéficiaires sociaux :

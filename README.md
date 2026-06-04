@@ -121,7 +121,8 @@ uvx mcpo --config mcpo-config.json --port 8000
 
 ### 3. Vérifier Ollama
 ```bash
-ollama pull qwen2.5:14b
+ollama pull qwen2.5:14b        # orchestrateur + analyste
+ollama pull qwen2.5-coder:7b   # requêteur SQL + générateur dashboard
 ollama serve  # si pas déjà démarré
 ```
 

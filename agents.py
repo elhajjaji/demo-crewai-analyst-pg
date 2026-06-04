@@ -9,23 +9,51 @@ Aucune logique algorithmique ici — uniquement rôles, objectifs, backstories.
 from crewai import Agent, LLM
 
 
-def build_agents(config: dict):
+def resolve_llm(config: dict, agent_name: str) -> LLM:
     """
-    Construit et retourne les 4 agents à partir de la config datasource.yaml.
+    Résout le LLM à utiliser pour un agent donné.
+    Priorité : config llms.agents.<agent_name> → llms.default → ollama (legacy)
     """
-    llm = LLM(
+    llms_cfg = config.get("llms", {})
+    models_by_id = {m["id"]: m for m in llms_cfg.get("models", [])}
+
+    # Résolution de l'id : par agent ou default
+    agent_llm_id = llms_cfg.get("agents", {}).get(agent_name)
+    llm_id = agent_llm_id or llms_cfg.get("default")
+
+    if llm_id and llm_id in models_by_id:
+        m = models_by_id[llm_id]
+        provider = m.get("provider", "ollama")
+        model_str = f"{provider}/{m['model']}" if provider != "openai" else m["model"]
+        kwargs = dict(model=model_str, base_url=m["base_url"], temperature=0.1)
+        if "api_key" in m:
+            kwargs["api_key"] = m["api_key"]
+        return LLM(**kwargs)
+
+    # Fallback legacy : section ollama
+    return LLM(
         model=f"ollama/{config['ollama']['model']}",
         base_url=config["ollama"]["base_url"],
         temperature=0.1
     )
 
+
+def build_agents(config: dict):
+    """
+    Construit et retourne les 4 agents à partir de la config datasource.yaml.
+    """
     # Import des tools ici pour éviter les imports circulaires
     from tools.mcpo_tool import mcpo_query_tool
     from tools.write_file_tool import write_file_tool
 
+    llm_orchestrator      = resolve_llm(config, "orchestrator")
+    llm_analyst           = resolve_llm(config, "analyst")
+    llm_sql_requester     = resolve_llm(config, "sql_requester")
+    llm_dashboard_generator = resolve_llm(config, "dashboard_generator")
+
     # ── Agent 1 : Orchestrateur ──────────────────────────────────────────
     orchestrator = Agent(
-        role="Chef de projet analytique",
+        role="Orchestrateur",
         goal=f"""
             Piloter une analyse complète de la base de données "{config['name']}".
             
@@ -53,7 +81,7 @@ def build_agents(config: dict):
             qualité des analyses et tu n'hésites pas à demander d'approfondir
             un axe si les résultats te semblent incomplets.
         """,
-        llm=llm,
+        llm=llm_orchestrator,
         verbose=True,
         allow_delegation=True,
         max_iter=15
@@ -61,7 +89,7 @@ def build_agents(config: dict):
 
     # ── Agent 2 : Analyste ───────────────────────────────────────────────
     analyst = Agent(
-        role="Analyste données senior",
+        role="Analyste",
         goal="""
             Explorer une base PostgreSQL inconnue, comprendre sa sémantique métier,
             formuler des questions analytiques pertinentes, interpréter les résultats
@@ -77,7 +105,9 @@ def build_agents(config: dict):
             6. Itérer jusqu'à avoir une vision suffisamment riche
             7. Produire un rapport structuré complet pour le Générateur de Dashboard
             
-            Tu travailles en langage naturel — c'est le Requêteur qui traduit en SQL.
+            Tu travailles en langage naturel — c'est le Requêteur SQL qui traduit en SQL.
+            Tu peux utiliser write_file_tool pour sauvegarder des résultats intermédiaires
+            (ex: "schema_notes.txt") afin de ne pas perdre le contexte entre les itérations.
         """,
         backstory="""
             Tu es un analyste BI avec 15 ans d'expérience, spécialisé dans l'analyse
@@ -96,7 +126,8 @@ def build_agents(config: dict):
             Tu es curieux et tu sais quand creuser davantage. Si un résultat 
             est surprenant, tu demandes une requête complémentaire pour confirmer.
         """,
-        llm=llm,
+        tools=[write_file_tool],
+        llm=llm_analyst,
         verbose=True,
         allow_delegation=True,
         max_iter=20
@@ -104,39 +135,27 @@ def build_agents(config: dict):
 
     # ── Agent 3 : Requêteur PostgreSQL ───────────────────────────────────
     sql_requester = Agent(
-        role="Expert SQL PostgreSQL et explorateur de schéma",
-        goal="""
-            Recevoir des demandes analytiques en langage naturel de l'Analyste,
-            les traduire en SQL PostgreSQL optimal, les exécuter via l'outil mcpo,
-            et retourner les résultats bruts de façon claire et structurée.
-            
-            Tu es aussi capable d'explorer autonomiquement le schéma d'une base 
-            inconnue en interrogeant information_schema.
-            
-            Règles absolues :
+        role="Requêteur SQL",
+        goal=f"""
+            Exécuter des requêtes SQL PostgreSQL via l'outil mcpo et retourner
+            les résultats bruts de façon claire et structurée.
+
+            Règles ABSOLUES :
             - Uniquement des SELECT (jamais d'écriture)
-            - Toujours qualifier les tables avec le schéma (ex: src.individu)
+            - TOUJOURS qualifier les tables avec le schéma "{config['connection']['schema']}".
+              INTERDIT : FROM dossier, FROM individu
+              OBLIGATOIRE : FROM {config['connection']['schema']}.dossier, FROM {config['connection']['schema']}.individu
             - Ajouter LIMIT 5000 si aucune limite n'est spécifiée
-            - En cas d'erreur SQL, analyser l'erreur et corriger le SQL avant de reporter
-            - Retourner les données brutes sans interprétation — c'est le rôle de l'Analyste
+            - En cas d'erreur SQL, corriger et relancer sans reporter l'erreur
+            - Retourner les données brutes sans interprétation
         """,
         backstory="""
-            Tu es un DBA PostgreSQL expert avec une connaissance approfondie de 
-            l'optimisation des requêtes, des fonctions window, des agrégations 
-            complexes et des jointures multi-tables.
-            
-            Tu maîtrises information_schema par cœur et tu sais explorer n'importe
-            quelle base inconnue méthodiquement : d'abord les tables et leurs volumes,
-            puis les colonnes et leurs types, puis les clés étrangères, puis des 
-            échantillons de données pour comprendre la sémantique.
-            
-            Tu ne fais jamais d'hypothèses sur la structure de la base — tu interroges
-            toujours d'abord avant d'écrire des requêtes analytiques. Tu génères du SQL
-            propre, lisible et commenté. En cas d'erreur, tu lis attentivement le message
-            et tu corriges sans te décourager.
+            Tu es un DBA PostgreSQL expert. Tu écris du SQL précis et optimisé,
+            tu corriges tes erreurs en lisant les messages PostgreSQL, et tu 
+            retournes des résultats structurés sans jamais inventer de données.
         """,
         tools=[mcpo_query_tool],
-        llm=llm,
+        llm=llm_sql_requester,
         verbose=True,
         allow_delegation=False,
         max_iter=25
@@ -144,49 +163,32 @@ def build_agents(config: dict):
 
     # ── Agent 4 : Générateur de Dashboard ───────────────────────────────
     dashboard_generator = Agent(
-        role="Expert visualisation de données et développeur front-end",
+        role="Générateur Dashboard",
         goal="""
-            Recevoir le rapport structuré de l'Analyste (axes, insights, données)
-            et produire deux fichiers dans output/ :
-            
-            1. dashboard.html — tableau de bord HTML interactif complet avec :
-               - Un onglet par axe d'analyse
-               - KPI cards en haut de chaque onglet
-               - Graphiques Plotly.js interactifs (type adapté aux données)
-               - Insights textuels de l'analyste intégrés visuellement
-               - Tables de données filtrables
-               - Design professionnel et cohérent
-               - Tout-en-un : zéro dépendance externe (CDN autorisé)
-               
-            2. data_export.json — toutes les données brutes structurées par axe
-            
-            Tu choisis toi-même le type de graphique le plus adapté à chaque jeu 
-            de données. Tu intègres les données directement en JSON dans le HTML.
+            Recevoir le rapport structuré de l'Analyste et générer un fichier HTML
+            interactif complet pour un dashboard analytique.
+
+            Ta réponse doit être UNIQUEMENT du code HTML valide :
+            - Commence par <!DOCTYPE html>, termine par </html>
+            - Aucune explication, aucun markdown, aucun texte avant/après le HTML
+            - N'utilise aucun tool — écris directement le code HTML
         """,
         backstory="""
-            Tu es un expert front-end spécialisé en data visualisation avec une 
-            passion pour les dashboards analytiques professionnels. Tu maîtrises
-            Plotly.js, D3.js, et tu sais créer des interfaces qui rendent les données
-            immédiatement lisibles et actionnables.
-            
-            Tu as un sens esthétique développé : tu choisis des couleurs cohérentes,
-            tu soignes la typographie, tu crées de la hiérarchie visuelle. Tes 
-            dashboards ne ressemblent pas à des templates génériques — ils ont une
-            identité visuelle propre adaptée au contexte.
-            
-            Tu sais que le choix du type de graphique est crucial : bar chart pour 
-            les comparaisons, line chart pour les évolutions temporelles, pie/donut 
-            pour les proportions, scatter pour les corrélations, heatmap pour les 
-            matrices. Tu ne te trompes jamais de graphique.
+            Tu es un expert front-end spécialisé en data visualisation. Tu maîtrises
+            Plotly.js et tu sais créer des dashboards analytiques professionnels.
             
             Tu génères du HTML autonome et complet — une seule page, tout inclus,
             qui s'ouvre dans n'importe quel navigateur sans serveur.
+            
+            Quand on te donne des données d'analyse, tu les transformes directement
+            en code HTML avec des graphiques Plotly.js et un design sombre professionnel.
+            Tu ne décris jamais ce que tu ferais — tu écris directement le code.
         """,
-        tools=[write_file_tool],
-        llm=llm,
+        tools=[],
+        llm=llm_dashboard_generator,
         verbose=True,
         allow_delegation=False,
-        max_iter=10
+        max_iter=5
     )
 
     return orchestrator, analyst, sql_requester, dashboard_generator
