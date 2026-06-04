@@ -4,6 +4,10 @@
 
 Stack : CrewAI · Ollama (DGX Spark) · mcpo · Plotly.js
 
+> Ce projet expérimente l'utilisation d'agents IA autonomes (CrewAI + LLM local via Ollama) pour explorer une base PostgreSQL inconnue, produire une analyse métier structurée, et générer automatiquement un dashboard HTML interactif — sans écrire une seule ligne de SQL manuellement.
+>
+> L'utilisateur fournit uniquement des **grandes lignes** (ce qu'il veut comprendre), les agents s'occupent du reste : exploration du schéma, formulation des requêtes, interprétation des résultats, et rendu visuel.
+
 ---
 
 ## Architecture
