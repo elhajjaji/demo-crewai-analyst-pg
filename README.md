@@ -12,6 +12,118 @@ Stack : CrewAI · Ollama (DGX Spark) · mcpo · Plotly.js
 
 ## Architecture
 
+Voici la modélisation complète de l'architecture de `pg_analyst` sous forme de diagramme Mermaid interactif. Ce schéma décrit les entrées/configurations, la structure d'orchestration hiérarchique CrewAI avec les agents de travail, le déroulement des tâches ordonnées, les connexions d'infrastructure locales et la génération des fichiers de sortie dans le répertoire `output/`.
+
+```mermaid
+flowchart TB
+    %% Définitions des styles de classes
+    classDef config fill:#eceff1,stroke:#37474f,stroke-width:1px,color:#263238;
+    classDef execution fill:#fff3e0,stroke:#ff9800,stroke-width:1px,color:#e65100;
+    classDef agent fill:#e0f2f1,stroke:#009688,stroke-width:1px,color:#004d40;
+    classDef task fill:#efebe9,stroke:#8d6e63,stroke-width:1px,color:#4e342e;
+    classDef infra fill:#ede7f6,stroke:#673ab7,stroke-width:1px,color:#4a148c;
+    classDef output fill:#e8f5e9,stroke:#4caf50,stroke-width:1px,color:#1b5e20;
+    classDef user fill:#e3f2fd,stroke:#2196f3,stroke-width:1px,color:#0d47a1;
+
+    subgraph Inputs ["⚙️ Configuration & Entrées"]
+        U([👤 Utilisateur]) -->|Définit besoins| Conf["📄 config/datasource.yaml<br/>- mcpo URL & Schema<br/>- Modèles Ollama<br/>- Directives utilisateur (user_guidelines)"]
+        MC["⚙️ mcpo-config.json<br/>- Configuration serveur MCP<br/>- PostgreSQL URI"]
+    end
+    
+    subgraph Execution ["⚡ Point d'Entrée Python"]
+        Main["🐍 main.py<br/>- Chargement config & vérifs<br/>- Initialisation des Tools<br/>- Lancement du Crew<br/>- Post-processing HTML/JSON"]
+    end
+
+    subgraph CrewAI ["🤖 Orchestration CrewAI (Processus Hiérarchique)"]
+        Mgr["🧠 ORCHESTRATEUR (Manager)<br/>- Modèle: qwen2.5:14b<br/>- Rôle: Diriger, cadrer, valider les résultats<br/>- Délègue aux agents workers"]
+        
+        subgraph Agents ["Agents de Travail (Workers)"]
+            A["📊 ANALYSTE<br/>- Modèle: qwen2.5:14b<br/>- Rôle: Définir les axes, interpréter les données<br/>- Outil: write_file_tool"]
+            R["🔍 REQUÊTEUR SQL<br/>- Modèle: qwen2.5-coder:7b<br/>- Rôle: Écrire & exécuter le SQL standard<br/>- Outil: mcpo_query_tool"]
+            G["🖥️ GÉNÉRATEUR DASHBOARD<br/>- Modèle: qwen2.5-coder:7b<br/>- Rôle: Traduire l'analyse en HTML/CSS/JS<br/>- Outil: Aucun (génère le HTML brut)"]
+        end
+    end
+
+    subgraph Tasks ["📋 Déroulement des Tâches (tasks.py)"]
+        T1["Tâche 1 : Exploration (task_explore)<br/>- Lister les tables<br/>- Décrire structures & relations<br/>- Compter et échantillonner"]
+        T2["Tâche 2 : Analyse (task_analyze)<br/>- Définir 4-6 axes (onglets)<br/>- Poser des questions analytiques<br/>- Itérer avec SQL (max_turns)"]
+        T3["Tâche 3 : Dashboard (task_dashboard)<br/>- Générer une page autonome (Plotly.js)<br/>- Appliquer le thème sombre pro<br/>- Injecter données & insights"]
+    end
+
+    subgraph Infra ["🌐 Infrastructure Locale (Services)"]
+        Ollama["🧠 Ollama API<br/>(base_url:11434)"]
+        MCP["🔌 Serveur mcpo (port:8000)<br/>- Wrapper MCP postgres<br/>- Valide & exécute SELECT"]
+        DB[("🗄️ PostgreSQL DB<br/>- benefits-dataset<br/>- Docker Compose port 5433")]
+    end
+
+    subgraph Outputs ["📦 Livrables (output/)"]
+        Out1["🖥️ dashboard.html<br/>- Graphiques interactifs Plotly.js<br/>- Navigation par onglets"]
+        Out2["📊 data_export.json<br/>- Données brutes structurées par axes<br/>- KPIs et insights associés"]
+        Out3["⚙️ schema_context.json<br/>- Cache de structure PostgreSQL"]
+    end
+
+    %% Connexions - Config & Entrée
+    Conf --> Main
+    MC --> Main
+    Main --> Mgr
+
+    %% Connexions - Délégation Hiérarchique
+    Mgr -->|Délègue & Valide| A
+    Mgr -->|Délègue| R
+    Mgr -->|Délègue| G
+
+    %% Collaboration inter-agents
+    A -->|1. Demande de schéma / 3. Requêtes SQL| R
+    R -->|2. Métadonnées / 4. Résultats bruts| A
+    A -->|"5. Rapport structuré (JSON)"| G
+
+    %% Flux des tâches
+    Main -->|Lance| T1
+    T1 -->|Résultats découverte schéma| T2
+    T2 -->|Rapport JSON d'analyse| T3
+    T3 -->|HTML brut| Main
+
+    %% Liaison agents <-> tâches
+    R -.->|Exécute| T1
+    A -.->|Exécute| T2
+    G -.->|Exécute| T3
+
+    %% Appels aux services
+    Mgr -->|Requêtes LLM| Ollama
+    A -->|Requêtes LLM| Ollama
+    R -->|Requêtes LLM| Ollama
+    G -->|Requêtes LLM| Ollama
+    R --->|1. mcpo_query_tool| MCP
+    MCP --->|2. Requête SQL SELECT| DB
+    DB -.->|3. Données de tables| MCP
+    MCP -.->|4. JSON Response| R
+
+    %% Génération des fichiers de sortie
+    Main -->|Nettoie & Sauvegarde| Out1
+    Main -->|Extrait JSON| Out2
+    A -.->|Cache schéma| Out3
+
+    %% Assignation des styles
+    class Conf config
+    class MC config
+    class Main execution
+    class Mgr agent
+    class A agent
+    class R agent
+    class G agent
+    class T1 task
+    class T2 task
+    class T3 task
+    class Ollama infra
+    class MCP infra
+    class DB infra
+    class Out1 output
+    class Out2 output
+    class Out3 output
+    class U user
+```
+
+### VERSION LIGHT
 ```mermaid
 flowchart TD
     U([👤 Utilisateur\ngrandes lignes]) --> O
