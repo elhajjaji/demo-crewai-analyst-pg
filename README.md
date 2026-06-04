@@ -12,7 +12,7 @@ Stack : CrewAI · Ollama (DGX Spark) · mcpo · Plotly.js
 
 ## Architecture
 
-Voici la modélisation complète de l'architecture de `pg_analyst` sous forme de diagramme Mermaid interactif. Ce schéma décrit les entrées/configurations, la structure d'orchestration hiérarchique CrewAI avec les agents de travail, le déroulement des tâches ordonnées, les connexions d'infrastructure locales et la génération des fichiers de sortie dans le répertoire `output/`.
+Voici la modélisation complète de l'architecture du projet, mise à jour d'après la structure de `pg_analyst_2`. Ce schéma intègre notamment le modèle `qwen2.5-coder:14b` pour le générateur de dashboard, l'invalidation de la délégation pour les workers SQL et Front-end, et l'utilisation de `dashboard_template_reference.html`.
 
 ```mermaid
 flowchart TB
@@ -28,6 +28,7 @@ flowchart TB
     subgraph Inputs ["⚙️ Configuration & Entrées"]
         U([👤 Utilisateur]) -->|Définit besoins| Conf["📄 config/datasource.yaml<br/>- mcpo URL & Schema<br/>- Modèles Ollama<br/>- Directives utilisateur (user_guidelines)"]
         MC["⚙️ mcpo-config.json<br/>- Configuration serveur MCP<br/>- PostgreSQL URI"]
+        Tpl["📄 dashboard_template_reference.html<br/>- Template HTML de référence visuelle"]
     end
     
     subgraph Execution ["⚡ Point d'Entrée Python"]
@@ -35,12 +36,12 @@ flowchart TB
     end
 
     subgraph CrewAI ["🤖 Orchestration CrewAI (Processus Hiérarchique)"]
-        Mgr["🧠 ORCHESTRATEUR (Manager)<br/>- Modèle: qwen2.5:14b<br/>- Rôle: Diriger, cadrer, valider les résultats<br/>- Délègue aux agents workers"]
+        Mgr["🧠 ORCHESTRATEUR (Manager)<br/>- Modèle: qwen2.5:14b<br/>- Délégation: ACTIVÉE<br/>- Rôle: Diriger, cadrer, valider les résultats"]
         
         subgraph Agents ["Agents de Travail (Workers)"]
-            A["📊 ANALYSTE<br/>- Modèle: qwen2.5:14b<br/>- Rôle: Définir les axes, interpréter les données<br/>- Outil: write_file_tool"]
-            R["🔍 REQUÊTEUR SQL<br/>- Modèle: qwen2.5-coder:7b<br/>- Rôle: Écrire & exécuter le SQL standard<br/>- Outil: mcpo_query_tool"]
-            G["🖥️ GÉNÉRATEUR DASHBOARD<br/>- Modèle: qwen2.5-coder:7b<br/>- Rôle: Traduire l'analyse en HTML/CSS/JS<br/>- Outil: Aucun (génère le HTML brut)"]
+            A["📊 ANALYSTE<br/>- Modèle: qwen2.5:14b<br/>- Rôle: Définir les axes, interpréter les données<br/>- Outil: write_file_tool<br/>- Délégation: ACTIVÉE"]
+            R["🔍 REQUÊTEUR SQL<br/>- Modèle: qwen2.5-coder:7b<br/>- Rôle: Écrire & exécuter le SQL standard<br/>- Outil: mcpo_query_tool<br/>- Délégation: DÉSACTIVÉE"]
+            G["🖥️ GÉNÉRATEUR DASHBOARD<br/>- Modèle: qwen2.5-coder:14b<br/>- Rôle: Traduire l'analyse en HTML/CSS/JS<br/>- Outil: Aucun (génère le HTML brut)<br/>- Délégation: DÉSACTIVÉE"]
         end
     end
 
@@ -51,7 +52,7 @@ flowchart TB
     end
 
     subgraph Infra ["🌐 Infrastructure Locale (Services)"]
-        Ollama["🧠 Ollama API<br/>(base_url:11434)"]
+        Ollama["🧠 Ollama API<br/>(base_url:11434)<br/>Modèles : qwen2.5:14b & qwen2.5-coder"]
         MCP["🔌 Serveur mcpo (port:8000)<br/>- Wrapper MCP postgres<br/>- Valide & exécute SELECT"]
         DB[("🗄️ PostgreSQL DB<br/>- benefits-dataset<br/>- Docker Compose port 5433")]
     end
@@ -65,6 +66,7 @@ flowchart TB
     %% Connexions - Config & Entrée
     Conf --> Main
     MC --> Main
+    Tpl -.-> Main
     Main --> Mgr
 
     %% Connexions - Délégation Hiérarchique
@@ -106,6 +108,7 @@ flowchart TB
     %% Assignation des styles
     class Conf config
     class MC config
+    class Tpl config
     class Main execution
     class Mgr agent
     class A agent
@@ -122,6 +125,7 @@ flowchart TB
     class Out3 output
     class U user
 ```
+
 
 ### VERSION LIGHT
 ```mermaid
