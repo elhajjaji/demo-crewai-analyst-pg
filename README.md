@@ -8,28 +8,23 @@ Stack : CrewAI · Ollama (DGX Spark) · mcpo · Plotly.js
 
 ## Architecture
 
-```
-Utilisateur (grandes lignes)
-        │
-        ▼
-┌─────────────────┐
-│  ORCHESTRATEUR  │  Pilote, délègue, valide
-└────────┬────────┘
-         │
-    ┌────▼─────┐         ┌──────────────────┐
-    │ ANALYSTE │◄────────► REQUÊTEUR SQL     │
-    │          │  "requête│ (tool: mcpo)      │
-    │ Définit  │   moi X" │                  │
-    │ axes,    ├─────────►│ Génère SQL,       │
-    │ interprète│ résultats│ exécute via mcpo  │
-    └────┬─────┘         └──────────────────┘
-         │
-         ▼
-┌─────────────────────┐
-│  GÉNÉRATEUR TDB     │  (tool: write_file)
-│  dashboard.html     │
-│  data_export.json   │
-└─────────────────────┘
+```mermaid
+flowchart TD
+    U([👤 Utilisateur\ngrandes lignes]) --> O
+
+    O["🧠 ORCHESTRATEUR\nPilote, délègue, valide"]
+
+    O --> A
+
+    A["📊 ANALYSTE\nDéfinit axes, interprète"]
+    R["🔍 REQUÊTEUR SQL\ntool: mcpo\nGénère SQL, exécute via mcpo"]
+
+    A -->|"requête moi X"| R
+    R -->|résultats| A
+
+    A --> G
+
+    G["🖥️ GÉNÉRATEUR TDB\ntool: write_file\ndashboard.html · data_export.json"]
 ```
 
 ## Prérequis
@@ -122,14 +117,26 @@ uvx mcpo --config mcpo-config.json --port 8000
 
 ### 3. Vérifier Ollama
 ```bash
-ollama pull qwen2.5-coder:7b
+ollama pull qwen2.5:14b
 ollama serve  # si pas déjà démarré
 ```
 
 ### 4. Configurer les grandes lignes d'analyse
 ```yaml
-# config/datasource.yaml → section analysis.user_guidelines
+# config/datasource.yaml — seul fichier à modifier
+name: "Ma Source"
+
+connection:
+  mcpo_url: "http://localhost:8000"
+  mcpo_server: "postgres-benefits"  # doit correspondre à mcpo-config.json
+  schema: "src"
+
+ollama:
+  model: "qwen2.5:14b"
+  base_url: "http://localhost:11434"
+
 analysis:
+  max_enrichment_turns: 2
   user_guidelines: |
     Je veux comprendre cette base de gestion des bénéficiaires sociaux :
 
@@ -167,6 +174,9 @@ analysis:
     - Montants aberrants, dossiers incohérents, doublons NAVS
 
   max_enrichment_turns: 2
+
+output:
+  dir: "output/"
 ```
 
 ### 5. Lancer l'analyse
@@ -186,16 +196,23 @@ xdg-open output/dashboard.html  # Linux
 
 Modifier uniquement `config/datasource.yaml` et `mcpo-config.yaml` :
 
-```yaml
-# mcpo-config.yaml — ajouter le nouveau serveur
-servers:
-  postgres-nouvelle-source:
-    type: stdio
-    command: uvx
-    args:
-      - mcp-server-postgres
-      - postgresql://user:pass@localhost:5434/nouvelle_db
+```json
+// mcpo-config.json — ajouter le nouveau serveur
+{
+  "mcpServers": {
+    "postgres-nouvelle-source": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://user:pass@localhost:5434/nouvelle_db"
+      ]
+    }
+  }
+}
+```
 
+```yaml
 # config/datasource.yaml — pointer vers le nouveau serveur
 name: "Nouvelle Source"
 connection:
@@ -215,10 +232,10 @@ pg_analyst/
 ├── tools/
 │   ├── mcpo_tool.py          ← Wrapper HTTP mcpo (seul algo du projet)
 │   └── write_file_tool.py    ← Écriture des fichiers output
-├── agents.py                 ← Définition des 4 agents CrewAI
-├── tasks.py                  ← Définition des 3 tasks
+├── agents.py                 ← 4 agents CrewAI (orchestrateur, analyste, requêteur, générateur)
+├── tasks.py                  ← 3 tasks (explore, analyze, dashboard)
 ├── main.py                   ← Point d'entrée
-├── mcpo-config.yaml          ← Config serveur mcpo
+├── mcpo-config.json          ← Config serveur mcpo (npx @modelcontextprotocol/server-postgres)
 ├── requirements.txt
 └── output/                   ← Généré automatiquement
     ├── dashboard.html
